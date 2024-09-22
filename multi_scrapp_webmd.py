@@ -3,6 +3,7 @@ import csv
 import time
 import random
 import logging
+import winsound  
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
@@ -15,26 +16,26 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Настройки прокси
 PROXY_LIST = [
-    "159.65.237.225:1468",
-    "209.198.3.194:10800",
-    "64.6.254.91:60091",
-    "174.138.176.78:29334",
-    "167.172.159.43:18789",
-    "209.159.153.22:43992",
-    "159.65.237.225:1346",
-    "154.208.10.126:80",
-    "165.232.129.150:80",
-    "37.221.193.221:27547",
-    "162.210.197.69:29856",
-    "212.83.143.223:25739",
-    "23.105.170.30:61732",
-    "162.210.197.91:56439",
     "198.44.255.5:80",
-    "67.213.210.61:29221",
-    "209.159.153.19:61792",
-    "38.91.107.224:12432",
-    "107.180.95.93:26382",
-    "67.213.212.51:26999",
+    "209.159.153.21:29185",
+    "163.172.137.227:16379",
+    "47.254.16.71:5008",
+    "66.29.128.245:47426",
+    "207.244.254.27:1208",
+    "67.213.210.61:50834",
+    "209.159.153.19:59552",
+    "67.213.210.61:62523",
+    "212.83.143.211:61596",
+    "162.210.197.69:56284",
+    "209.159.153.21:26778",
+    "209.159.153.22:53690",
+    "162.210.197.69:57158",
+    "162.210.197.91:52703",
+    "67.213.212.47:47863",
+    "67.213.212.50:43535",
+    "198.44.255.5:80",
+    "23.105.170.30:30119",
+    "199.204.248.124:54531",
 ]
 
 csv_links_file = "output.csv"
@@ -85,6 +86,16 @@ def load_dead_proxies():
         reader = csv.reader(file)
         return [row[0] for row in reader]
 
+# Удаление успешно обработанных ссылок из failed_links.csv
+def remove_processed_failed_links(successful_links):
+    if os.path.exists(failed_links_file):
+        with open(failed_links_file, mode='r', newline='', encoding='utf-8') as file:
+            links = [row[0] for row in csv.reader(file) if row[0] not in successful_links]
+        with open(failed_links_file, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            for link in links:
+                writer.writerow([link])
+
 # Сохранение текущего прогресса
 def save_progress(link):
     with open(progress_file, mode='w', newline='', encoding='utf-8') as file:
@@ -95,7 +106,7 @@ def save_progress(link):
 def get_random_proxy(dead_proxies):
     available_proxies = [proxy for proxy in PROXY_LIST if proxy not in dead_proxies]
     if not available_proxies:
-        return random.choice(PROXY_LIST)  # Если все прокси мертвы, разрешаем повторное использование уже использованных
+        return None  # Если все прокси мертвы, возвращаем None
     return random.choice(available_proxies)
 
 # Настройка браузера с прокси
@@ -104,6 +115,8 @@ def setup_browser_with_proxy(dead_proxies):
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     proxy = get_random_proxy(dead_proxies)
+    if not proxy:
+        return None  # Если нет доступных прокси, возвращаем None
     chrome_options.add_argument(f'--proxy-server={proxy}')
     driver = webdriver.Chrome(options=chrome_options)
     driver.proxy_address = proxy
@@ -163,6 +176,7 @@ def parse_doctor_info(driver, link):
         if conditions_list:
             all_conditions = [cond.text.strip() for cond in conditions_list.find_all("li")]
             conditions = ', '.join(all_conditions)
+            
 
         # Услуги и процедуры (видимые и скрытые элементы)
         procedures = 'N/A'
@@ -266,19 +280,28 @@ def download_image(url, path):
 
 # Основная функция для обработки ссылок
 def worker_thread(driver, link_queue, dead_proxies):
+    successful_links = []
     while not link_queue.empty():
         link = link_queue.get()
         doctor_data = parse_doctor_info(driver, link)
         if doctor_data:
             save_doctor_data(doctor_data)
+            successful_links.append(link)
         else:
             logging.error(f"Прокси сервер {driver.proxy_address} мертв, перезапуск браузера с новым прокси")
             save_failed_link(link)
             dead_proxies.append(driver.proxy_address)
             save_dead_proxy(driver.proxy_address)
             driver.quit()
-            driver = setup_browser_with_proxy(dead_proxies)  # Перезапуск браузера с новым прокси
+            new_driver = setup_browser_with_proxy(dead_proxies)  # Перезапуск браузера с новым прокси
+            if not new_driver:
+                logging.error("Все прокси мертвы. Завершение работы.")
+                winsound.Beep(1000, 2000)  # Издание звукового сигнала, если все прокси мертвы
+                break
+            else:
+                driver = new_driver  # Переназначаем браузер для продолжения работы
         link_queue.task_done()
+    return successful_links
 
 # Загрузка всех ссылок из CSV
 def load_links_from_csv():
@@ -301,6 +324,13 @@ def load_progress():
             return last_processed
     return None
 
+# Загрузка ссылок из failed_links.csv
+def load_failed_links():
+    if os.path.exists(failed_links_file):
+        with open(failed_links_file, mode="r", newline='', encoding='utf-8') as file:
+            return [row[0] for row in csv.reader(file)]
+    return []
+
 # Основной блок
 if __name__ == "__main__":
     initialize_csv()
@@ -320,14 +350,38 @@ if __name__ == "__main__":
     
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [executor.submit(worker_thread, driver, link_queue, dead_proxies) for driver in drivers]
+        successful_links = []
         for future in as_completed(futures):
-            future.result()
+            successful_links += future.result()
 
     # Закрытие всех браузеров после завершения
     for driver in drivers:
         driver.quit()
 
     logging.info("Все данные о врачах успешно обработаны и сохранены в CSV файл.")
+
+    # Обработка failed_links.csv после основного парсинга
+    failed_links = load_failed_links()
+    if failed_links:
+        logging.info("Обработка неудачных ссылок...")
+        link_queue = Queue()
+        for link in failed_links:
+            link_queue.put(link)
+
+        drivers = [setup_browser_with_proxy(dead_proxies) for _ in range(8)]
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(worker_thread, driver, link_queue, dead_proxies) for driver in drivers]
+            for future in as_completed(futures):
+                successful_links += future.result()
+
+        # Закрытие всех браузеров после завершения
+        for driver in drivers:
+            driver.quit()
+
+        # Удаляем обработанные ссылки из failed_links.csv
+        remove_processed_failed_links(successful_links)
+
+    logging.info("Парсинг завершен.")
 
     # Сохраняем мертвые прокси
     for proxy in dead_proxies:
