@@ -41,3 +41,65 @@ This Python-based scraper is designed for efficient extraction of detailed docto
 #### **Image Downloading**  
 - Automatically downloads and saves doctor profile images to the local `images/` folder, ensuring a complete dataset.
 
+### `requirements.txt`:
+
+Here’s the content for your `requirements.txt` file that includes all the necessary dependencies for your WebMD scraping script:
+
+```
+selenium==4.5.0
+beautifulsoup4==4.11.1
+requests==2.27.1
+lxml==4.9.1
+```
+
+
+
+### Recent Changes
+
+1. **New headless browser mode:** The script now uses the new headless mode (`--headless=new`) to prevent the browser windows from appearing while still maintaining full functionality.
+   
+2. **Browser windows are hidden:** The `--window-position=-32000,-32000` option has been added to ensure that browser windows are completely hidden and do not interfere with the desktop environment.
+
+3. **Active browser monitoring:** A counter has been added to log the number of active browser instances. After each successful scrape, the log will display the number of currently running browsers, allowing for easier detection of browser failures or issues.
+
+4. **Proxy handling optimization:** Improved logic for handling proxy servers to prevent errors when running in headless mode.
+
+### Installation and Usage
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-repo/webmd-multi-scraper.git
+   cd webmd-multi-scraper
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Add your proxies to the `PROXY_LIST` in the main script file.
+
+4. Run the script:
+   ```bash
+   python multi_scrapp_webmd.py
+   ```
+
+### Logging
+
+Example of script logs:
+```
+2024-09-22 23:05:08,599 - INFO - Image saved: images\photo-5906.jpg
+2024-09-22 23:05:08,599 - INFO - Scraped data for Dr. James Joseph Mahoney, MD
+2024-09-22 23:05:08,599 - INFO - Currently (10) browsers are running
+```
+
+### Important Notes
+
+- Keep the proxy list up to date. The script will automatically restart the browsers when issues with proxies are detected.
+- The script also automatically saves failed links to a separate file for future processing.
+
+### License
+
+This project is licensed under the MIT License.
+
+
