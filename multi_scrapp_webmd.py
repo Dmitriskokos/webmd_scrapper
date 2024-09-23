@@ -3,8 +3,11 @@ import csv
 import time
 import random
 import logging
-import winsound  
+import winsound
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from queue import Queue
@@ -16,26 +19,35 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Настройки прокси
 PROXY_LIST = [
-    "198.44.255.5:80",
-    "209.159.153.21:29185",
-    "163.172.137.227:16379",
-    "47.254.16.71:5008",
-    "66.29.128.245:47426",
-    "207.244.254.27:1208",
-    "67.213.210.61:50834",
-    "209.159.153.19:59552",
-    "67.213.210.61:62523",
-    "212.83.143.211:61596",
-    "162.210.197.69:56284",
-    "209.159.153.21:26778",
-    "209.159.153.22:53690",
-    "162.210.197.69:57158",
-    "162.210.197.91:52703",
-    "67.213.212.47:47863",
-    "67.213.212.50:43535",
-    "198.44.255.5:80",
-    "23.105.170.30:30119",
-    "199.204.248.124:54531",
+    
+    "209.159.153.19:27150",
+    "72.10.160.170:24331",
+    "67.213.212.39:19807",
+    "209.159.153.21:28782",
+    "67.213.212.47:46137",
+    "174.138.171.162:37400",
+    "67.213.210.167:25433",
+    "66.29.128.241:36503",
+    "162.0.220.217:26341",
+    "67.213.210.62:19183",
+    "23.105.170.35:63485",
+    "66.29.128.244:64486",
+    "134.122.26.11:80",
+    "192.73.244.36:80",
+    "67.213.212.48:45739",
+    "67.213.212.51:63544",
+    "162.0.220.217:27351",
+    "137.184.133.124:26964",
+    "67.213.210.167:60330",
+    "67.213.212.39:21898",
+    "67.213.212.47:32693",
+    "67.213.210.168:35606",
+    "162.0.220.161:57160",
+    "209.159.153.22:56038",
+    "209.159.153.22:53306",
+    "45.8.146.30:9095",
+    "107.180.95.93:32631",
+    "174.138.171.162:9240",
 ]
 
 csv_links_file = "output.csv"
@@ -109,18 +121,42 @@ def get_random_proxy(dead_proxies):
         return None  # Если все прокси мертвы, возвращаем None
     return random.choice(available_proxies)
 
-# Настройка браузера с прокси
+# Настройка браузера с прокси в режиме headless
 def setup_browser_with_proxy(dead_proxies):
     chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
+    
+    # Включаем headless режим
+    chrome_options.add_argument("--headless=new")  # Новый headless режим
+
+    # Отключаем GPU для headless режима
+    chrome_options.add_argument("--disable-gpu")
+
+    # Устанавливаем размер окна для headless режима
+    chrome_options.add_argument("--window-size=1920x1080")
+    chrome_options.add_argument("--window-position=-32000,-32000")
+
+    # Отключаем автоматизацию для того, чтобы браузер выглядел как обычный
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+
+    # Устанавливаем пользовательский агент, чтобы браузер выглядел как обычный
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
+    
+    # Устанавливаем прокси-сервер
     proxy = get_random_proxy(dead_proxies)
     if not proxy:
         return None  # Если нет доступных прокси, возвращаем None
     chrome_options.add_argument(f'--proxy-server={proxy}')
+    
+    # Запускаем драйвер браузера
     driver = webdriver.Chrome(options=chrome_options)
+
+    # Устанавливаем прокси-адрес для логов
     driver.proxy_address = proxy
+    logging.info(f"Запущен браузер в режиме headless с прокси {proxy}")
+    
     return driver
+
+
 
 # Функция для получения уникального имени файла
 def get_unique_image_name(image_name):
@@ -132,12 +168,18 @@ def get_unique_image_name(image_name):
         counter += 1
     return unique_name
 
-# Функция для парсинга данных врача
+
+
 def parse_doctor_info(driver, link):
     try:
         driver.get(link)
-        time.sleep(5)  # Увеличил время ожидания для загрузки страницы
+        
+        # Ожидаем появления основного элемента, чтобы убедиться, что страница загрузилась
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "provider-full-name"))
+        )
 
+        # Загружаем страницу с помощью BeautifulSoup после ожидания
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
         # Извлекаем необходимые данные
@@ -176,7 +218,6 @@ def parse_doctor_info(driver, link):
         if conditions_list:
             all_conditions = [cond.text.strip() for cond in conditions_list.find_all("li")]
             conditions = ', '.join(all_conditions)
-            
 
         # Услуги и процедуры (видимые и скрытые элементы)
         procedures = 'N/A'
@@ -225,17 +266,21 @@ def parse_doctor_info(driver, link):
         img_element = soup.find("div", class_="prov-img with-url")
         if img_element:
             img_tag = img_element.find("img", class_="loc-co-provim")
-            if img_tag and img_tag['src']:
+            if img_tag and img_tag.get('src'):
                 image_url = img_tag['src']
 
-        image_name = None
+        # Инициализируем переменную, даже если изображения нет
+        unique_image_name = "N/A"
         if image_url:
             image_url = image_url.split("?")[0]  # Берем изображение в исходном разрешении
             image_name = image_url.split("/")[-1]
             unique_image_name = get_unique_image_name(image_name)
             image_path = os.path.join(images_folder, unique_image_name)
-            if not os.path.exists(image_path):
-                download_image(image_url, image_path)
+            try:
+                if not os.path.exists(image_path):
+                    download_image(image_url, image_path)
+            except Exception as e:
+                logging.error(f"Ошибка при загрузке изображения {image_url}: {str(e)}")
 
         # Кнопка "Book Online"
         book_online_element = soup.find("span", class_="icon-request")
@@ -256,7 +301,7 @@ def parse_doctor_info(driver, link):
             link, name, specialties, address, city, state, zipcode, phone, title, description, book_online_url, 
             website, unique_image_name, experience, languages, conditions, procedures, insurance_plans, hospitals, certifications_text
         ]
-        
+
         logging.info(f"Спарсены данные для {name}")
         save_progress(link)
         return doctor_data
@@ -264,6 +309,7 @@ def parse_doctor_info(driver, link):
     except Exception as e:
         logging.error(f"Ошибка при парсинге {link} с прокси {driver.proxy_address}: {str(e)}")
         return None
+
 
 # Скачивание изображения
 def download_image(url, path):
@@ -297,6 +343,7 @@ def worker_thread(driver, link_queue, dead_proxies):
             if not new_driver:
                 logging.error("Все прокси мертвы. Завершение работы.")
                 winsound.Beep(1000, 2000)  # Издание звукового сигнала, если все прокси мертвы
+                link_queue.queue.clear()  # Очищаем очередь, чтобы завершить все потоки
                 break
             else:
                 driver = new_driver  # Переназначаем браузер для продолжения работы
@@ -346,9 +393,9 @@ if __name__ == "__main__":
         link_queue.put(link)
 
     dead_proxies = load_dead_proxies()  # Загружаем мертвые прокси
-    drivers = [setup_browser_with_proxy(dead_proxies) for _ in range(8)]  # Настраиваем 8 браузеров
+    drivers = [setup_browser_with_proxy(dead_proxies) for _ in range(10)]  # Настраиваем 8 браузеров
     
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(worker_thread, driver, link_queue, dead_proxies) for driver in drivers]
         successful_links = []
         for future in as_completed(futures):
@@ -368,8 +415,8 @@ if __name__ == "__main__":
         for link in failed_links:
             link_queue.put(link)
 
-        drivers = [setup_browser_with_proxy(dead_proxies) for _ in range(8)]
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        drivers = [setup_browser_with_proxy(dead_proxies) for _ in range(10)]
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(worker_thread, driver, link_queue, dead_proxies) for driver in drivers]
             for future in as_completed(futures):
                 successful_links += future.result()
@@ -386,4 +433,3 @@ if __name__ == "__main__":
     # Сохраняем мертвые прокси
     for proxy in dead_proxies:
         save_dead_proxy(proxy)
-
